@@ -1,7 +1,5 @@
 # Input-Aware NFA State Activation Pruning 
 
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
-![Dependencies](https://img.shields.io/badge/dependencies-matplotlib%20%7C%20numpy-orange)
 ![Topic](https://img.shields.io/badge/topic-Automata%20Theory%20%26%20Optimization-success)
 
 > **Overview**
