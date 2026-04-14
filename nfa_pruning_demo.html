@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NFA Transition Pruning — Live Demo (CS22B2031)</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; font-size: 13px;
+       background: #f5f5f0; color: #1a1a18; min-height: 100vh; padding: 16px; }
+.wrap { max-width: 900px; margin: 0 auto; }
+.title { font-size: 15px; font-weight: 500; margin-bottom: 12px; }
+.subtitle { font-size: 11px; color: #73726c; }
+
+/* metric cards */
+.mg { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; margin-bottom: 12px; }
+.mc { background: #fff; border: 0.5px solid #ddd; border-radius: 10px; padding: 10px 8px; text-align: center; }
+.mv { font-size: 22px; font-weight: 500; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ml { font-size: 11px; color: #73726c; margin-top: 3px; }
+
+/* panels */
+.pr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.pn { background: #fff; border: 0.5px solid #ddd; border-radius: 10px; padding: 10px 12px; }
+.pt { font-size: 10px; font-weight: 500; color: #73726c; margin-bottom: 7px; letter-spacing: .08em; text-transform: uppercase; }
+
+/* stream */
+.sw { display: flex; flex-wrap: wrap; gap: 2px; min-height: 52px; align-content: flex-start; }
+.sch { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 22px;
+       font-size: 11px; font-family: monospace; border-radius: 3px; color: #aaa; }
+.sch.cur { background: #185FA5; color: #fff; font-weight: 500; }
+
+/* sigma */
+.aw { display: flex; flex-wrap: wrap; gap: 1px; }
+.ac { display: inline-flex; align-items: center; justify-content: center; width: 19px; height: 15px;
+      font-size: 9px; font-family: monospace; border-radius: 2px;
+      background: #f0efe9; color: #aaa; transition: background .07s, color .07s; }
+.ac.on { background: #FAC775; color: #412402; }
+
+/* nfa */
+.np2 { background: #fff; border: 0.5px solid #ddd; border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.lgd { display: flex; gap: 12px; margin-bottom: 8px; font-size: 10px; color: #73726c; align-items: center; flex-wrap: wrap; }
+.ld { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 3px; vertical-align: middle; border: 0.5px solid transparent; }
+.ng { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px; }
+.nr { display: flex; align-items: center; height: 18px; }
+.nlb { font-size: 9px; font-family: monospace; color: #73726c; min-width: 82px; text-align: right; padding-right: 5px; flex-shrink: 0; }
+.nsep { font-size: 8px; color: #bbb; width: 7px; text-align: center; flex-shrink: 0; }
+.nd { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 0.5px solid; flex-shrink: 0; transition: background .06s, border-color .06s; cursor: default; }
+.nd.ni { background: #f0efe9; border-color: #ccc; }
+.nd.ne { background: #185FA5; border-color: #0C447C; }
+.nd.np { background: #A32D2D; border-color: #791F1F; }
+.nd.na { background: #3B6D11; border-color: #27500A; }
+.nd.nw { background: #B5D4F4; border-color: #378ADD; }
+
+/* controls */
+.cr { background: #fff; border: 0.5px solid #ddd; border-radius: 10px;
+      padding: 10px 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cl { font-size: 11px; color: #73726c; }
+select { font-size: 12px; padding: 4px 8px; border: 0.5px solid #ccc; border-radius: 6px;
+         background: #fff; color: #1a1a18; cursor: pointer; }
+.btn { font-size: 12px; padding: 5px 14px; border-radius: 6px; cursor: pointer; }
+.btn-p { border: 0.5px solid #378ADD; background: #E6F1FB; color: #0C447C; }
+.btn-r { border: 0.5px solid #ccc; background: transparent; color: #1a1a18; }
+.info { font-size: 10px; color: #73726c; margin-top: 10px; text-align: center; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="title">Input-Aware NFA Transition Pruning
+  </p>
+
+  <div class="mg">
+    <div class="mc"><div class="mv" id="mB">0</div><div class="ml">bytes in</div></div>
+    <div class="mc"><div class="mv" id="mP" style="color:#3B6D11">0%</div><div class="ml">pruning ratio</div></div>
+    <div class="mc"><div class="mv" id="mE">0</div><div class="ml">states evaluated</div></div>
+    <div class="mc"><div class="mv" id="mS" style="color:#A32D2D">0</div><div class="ml">states skipped</div></div>
+    <div class="mc"><div class="mv" id="mM" style="color:#185FA5">0</div><div class="ml">matches found</div></div>
+  </div>
+
+  <div class="pr">
+    <div class="pn">
+      <div class="pt">live byte stream</div>
+      <div class="sw" id="stEl"></div>
+    </div>
+    <div class="pn">
+      <div class="pt">Σ′ — active alphabet (last W bytes)</div>
+      <div class="aw" id="alEl"></div>
+    </div>
+  </div>
+
+  <div class="np2">
+    <div class="lgd">
+      <span><span class="ld" style="background:#185FA5"></span>evaluated this byte</span>
+      <span><span class="ld" style="background:#A32D2D"></span>pruned / skipped</span>
+      <span><span class="ld" style="background:#3B6D11"></span>match!</span>
+      <span><span class="ld" style="background:#B5D4F4;border-color:#378ADD"></span>active → next byte</span>
+      <span><span class="ld" style="background:#f0efe9;border-color:#ccc"></span>inactive</span>
+    </div>
+    <div class="ng" id="nfEl"></div>
+  </div>
+
+  <div class="cr">
+    <span class="cl">input type</span>
+    <select id="cI" onchange="resetSim()">
+      <option value="http">HTTP traffic</option>
+      <option value="dns">DNS traffic</option>
+      <option value="json">JSON data</option>
+      <option value="binary">Binary</option>
+      <option value="mixed">Mixed</option>
+    </select>
+    <span class="cl">W = <b id="wL">32</b></span>
+    <input type="range" id="cW" min="4" max="64" step="4" value="32" style="width:70px"
+           oninput="document.getElementById('wL').textContent=this.value; resetSim()">
+    <span class="cl">speed</span>
+    <input type="range" id="cSp" min="1" max="30" step="1" value="10" style="width:60px">
+    <button class="btn btn-p" id="pBtn" onclick="togglePlay()">Pause</button>
+    <button class="btn btn-r" onclick="resetSim()">Reset</button>
+  </div>
+
+  <p class="info">
+    Correctness guarantee: s<sub>i</sub> ∈ Σ′(i) always by construction → pruned states cannot fire → zero missed matches.<br>
+    Try <b>JSON</b> to see 100% pruning (all patterns begin uppercase; JSON uses lowercase keys). Try <b>Binary</b> for worst-case.
+  </p>
+</div>
+
+<script>
+// ── 24 patterns from the assignment ──
+const PAT = ['GET','POST','PUT','DELETE','HEAD','OPTIONS','PATCH','CONNECT',
+             'HTTP','HOST','QUERY','RETURN','SELECT','WHERE','FROM','TABLE',
+             'ACCEPT','CONTENT','LOCATION','VERSION','TRANSFER','UPGRADE','AUTHORIZATION','USER'];
+
+// ── Build multi-pattern NFA (mirrors Python nfa_engine.py _build exactly) ──
+const TR = {0:{}};           // transition table: stateId → {char → Set<stateId>}
+const SC = {0:new Set()};    // required chars per state: stateId → Set<char>
+const AC = new Set();        // accept state IDs
+const CH = [];               // [{pat, chain}] — one entry per pattern
+let ns = 1;                  // next state ID (0 = shared start)
+
+for (const pat of PAT) {
+  const chain = [0];  // chain begins at shared start state 0
+  let prev = 0;       // tail of chain being built
+
+  for (const c of pat) {
+    if (!TR[prev]) TR[prev] = {};              // init transition map for prev
+    if (!TR[prev][c]) TR[prev][c] = new Set(); // init char slot
+    TR[prev][c].add(ns);                       // transition: prev → ns on char c
+    SC[prev].add(c);                           // prev must see c (adds to required chars)
+    TR[ns] = {}; SC[ns] = new Set();           // init maps for new state ns
+    chain.push(ns); prev = ns; ns++;           // grow chain, advance tail, next ID
+  }
+
+  AC.add(prev - 1);                            // accept = prev-1 (matches Python exactly)
+  CH.push({pat, chain});
+}
+
+// ── Window Profiler — O(1) per byte ──
+class WP {
+  constructor(W) { this.W=W; this.b=[]; this.f={}; this.a=new Set(); }
+
+  upd(byte) {
+    const c = String.fromCharCode(byte);          // byte → char
+    if (this.b.length === this.W) {               // window full → evict oldest
+      const old = this.b.shift();                 // remove from front (O(1))
+      if (--this.f[old] === 0) { delete this.f[old]; this.a.delete(old); } // update freq + Σ′
+    }
+    this.b.push(c);                               // add new char at back
+    this.f[c] = (this.f[c]||0) + 1;              // increment frequency
+    this.a.add(c);                                // add to Σ′
+    return this.a;                                // return current Σ′
+  }
+
+  reset() { this.b=[]; this.f={}; this.a=new Set(); }
+}
+
+// ── Input generators ──
+function gHTTP() {
+  const m=['GET','POST','PUT','DELETE','HEAD'], p=['/api/users','/data','/home','/index.html'];
+  const h=['Host: example.com','Accept: application/json','Content-Type: text/html',
+           'Authorization: Bearer abc123','User-Agent: Mozilla/5.0'];
+  const L=[];
+  for(let i=0;i<100;i++){L.push(`${m[i%5]} ${p[i%4]} HTTP/1.1`);L.push(h[i%5]);L.push('');}
+  return new TextEncoder().encode(L.join('\n'));
+}
+
+function gDNS() {
+  const w=['example','google','api','cdn','mail','blog'], t=['.com','.net','.org'];
+  const L=[];
+  for(let i=0;i<200;i++) L.push(`QUERY ${w[i%6]}.${w[(i+2)%6]}${t[i%3]} A`);
+  return new TextEncoder().encode(L.join('\n'));
+}
+
+function gJSON() {
+  // lowercase keys → no pattern start chars → 100% pruning expected
+  const L=[];
+  for(let i=0;i<100;i++) L.push(JSON.stringify({id:i, name:`user_${i}`, email:`u${i}@ex.com`,
+    score:Math.round(Math.random()*10000)/100, active:i%2===0}));
+  return new TextEncoder().encode(L.join('\n'));
+}
+
+function gBin() {
+  // uniformly random bytes 0–255 = worst case / high entropy
+  const b=new Uint8Array(8000);
+  for(let i=0;i<b.length;i++) b[i]=Math.floor(Math.random()*256);
+  return b;
+}
+
+function gMix() {
+  // concatenate all types for mixed traffic
+  const a=gHTTP(),b=gDNS(),c=gJSON(),d=gBin();
+  const o=new Uint8Array(a.length+b.length+c.length+d.length);
+  o.set(a,0); o.set(b,a.length); o.set(c,a.length+b.length); o.set(d,a.length+b.length+c.length);
+  return o;
+}
+
+// ── Simulation state ──
+let wp    = new WP(32);      // window profiler instance
+let aset  = new Set([0]);    // current active NFA states (starts at {0})
+let data  = gHTTP();         // byte stream to process
+let pos   = 0;               // current position in data array
+let tEv=0, tSk=0, tMt=0;    // running totals: evaluations, skips, matches
+let running = true;          // animation running flag
+let lstSt = {};              // per-state result from last processed byte
+let rb    = [];              // recent bytes buffer for stream display
+let cSig  = new Set();       // snapshot of current Σ′ for rendering
+let raf=null, lts=0;         // animation frame handle + last tick timestamp
+
+// ── Build Σ′ DOM (pre-created, className swapped each step) ──
+const alEl = document.getElementById('alEl');
+const aSp  = []; // [{c:char, e:element}]
+
+for (let code=32; code<=126; code++) {
+  const c = String.fromCharCode(code);
+  const el = document.createElement('span');
+  el.className = 'ac';                                  // starts inactive
+  el.textContent = code===32 ? '·' : c;                // space → middle dot
+  el.title = `'${code===32?'space':c}' (ASCII ${code})`; // hover tooltip
+  alEl.appendChild(el);
+  aSp.push({c, e: el});
+}
+
+// ── Build NFA DOM (pre-created, circle className swapped each step) ──
+const nfEl   = document.getElementById('nfEl');
+const sDots  = {}; // stateId → [DOMElement, ...] (state 0 has 24 circles, one per row)
+
+for (const {pat, chain} of CH) {
+  const row = document.createElement('div');
+  row.className = 'nr'; // nfa row
+
+  const lbl = document.createElement('span');
+  lbl.className = 'nlb';
+  lbl.textContent = pat;          // pattern label on left
+  row.appendChild(lbl);
+
+  for (let i=0; i<chain.length; i++) {
+    const sid = chain[i];
+
+    if (i > 0) {                  // separator arrow between circles
+      const sep = document.createElement('span');
+      sep.className = 'nsep';
+      sep.textContent = '›';
+      row.appendChild(sep);
+    }
+
+    const dot = document.createElement('span');
+    dot.className = 'nd ni';      // starts inactive
+    // tooltip shows which chars this state needs to have a transition
+    dot.title = `state ${sid} | needs: [${[...SC[sid]].join(',')||'(any)'}]`;
+    row.appendChild(dot);
+
+    if (!sDots[sid]) sDots[sid] = []; // state 0 accumulates 24 entries
+    sDots[sid].push(dot);
+  }
+
+  nfEl.appendChild(row);
+}
+
+// ── Core simulation step: process one byte through the pruned NFA ──
+function step() {
+  if (pos >= data.length) {                // end of data → loop back
+    pos=0; aset=new Set([0]); wp.reset(); rb=[];
+    return;
+  }
+
+  const byte    = data[pos++];             // next byte from stream
+  const c       = String.fromCharCode(byte); // byte → char
+  const allowed = wp.upd(byte);           // slide window; returns updated Σ′
+  cSig = new Set(allowed);               // snapshot Σ′ for render
+
+  rb.push(c);                             // add to stream display buffer
+  if (rb.length > 26) rb.shift();        // keep only last 26 bytes
+
+  const nxAct  = new Set([0]);           // next active set; state 0 always re-added
+  const newSt  = {};                     // status for each state processed this byte
+
+  for (const sid of aset) {             // iterate over all currently active states
+    const needed = SC[sid];             // chars this state has outgoing transitions on
+
+    // ── Pruning decision: skip if required(s) ∩ Σ′ = ∅ ──────────────────
+    // If the state needs specific chars and NONE of them appear in the window,
+    // the current byte cannot possibly trigger this state → safe to skip.
+    // Correctness: the current byte sᵢ is always in Σ′, so we only prune states
+    // that truly cannot fire (their chars are absent from the recent context).
+    if (needed && needed.size > 0) {
+      let ok = false;
+      for (const x of needed) { if (allowed.has(x)) { ok=true; break; } }
+      if (!ok) { newSt[sid]='p'; tSk++; continue; }  // PRUNED: mark + skip
+    }
+
+    // ── Evaluate: look up transition on the actual current byte ──────────
+    tEv++;
+    newSt[sid] = 'e';                     // mark as evaluated
+    const tgts = (TR[sid]||{})[c];        // which states does this lead to?
+    if (tgts) for (const t of tgts) nxAct.add(t); // add successor states
+  }
+
+  aset = nxAct;                           // advance to new active set
+
+  // ── Match check: any new active state is an accept state? ────────────
+  let hit = false;
+  for (const sid of aset) if (AC.has(sid)) { hit=true; break; }
+  if (hit) {
+    tMt++;                                // increment match counter
+    for (const sid of aset) if (AC.has(sid)) newSt[sid]='m'; // tag accept states
+  }
+
+  lstSt = newSt;                          // save for render pass
+}
+
+// ── Render: update all DOM elements from current sim state ──
+function render() {
+  const tot = tEv + tSk;
+  const pct = tot > 0 ? Math.round(tSk/tot*100) : 0;
+
+  // Metric card values
+  document.getElementById('mB').textContent = pos.toLocaleString();
+  document.getElementById('mP').textContent = pct + '%';
+  document.getElementById('mE').textContent = tEv.toLocaleString();
+  document.getElementById('mS').textContent = tSk.toLocaleString();
+  document.getElementById('mM').textContent = tMt.toLocaleString();
+
+  // Stream display (small innerHTML, fast)
+  const stEl = document.getElementById('stEl');
+  stEl.innerHTML = rb.map((ch,i) => {
+    const cur  = i === rb.length-1;                           // most recent = highlighted
+    const disp = ch==='\n'?'↵':ch===' '?'·':ch;            // visualise control chars
+    return `<span class="sch${cur?' cur':''}">${disp}</span>`;
+  }).join('');
+
+  // Sigma' grid — toggle .on class, no DOM creation
+  for (const {c,e} of aSp) e.className = 'ac' + (cSig.has(c) ? ' on' : '');
+
+  // NFA state circles — map state to color class
+  for (const [k, dots] of Object.entries(sDots)) {
+    const sid = +k;
+    let cls = 'ni';                                              // inactive (gray)
+
+    if (aset.has(sid) && AC.has(sid)) cls = 'na';               // match state (green)
+    else if (lstSt[sid]==='m') cls = 'na';                      // also match (green)
+    else if (lstSt[sid]==='e') cls = 'ne';                      // evaluated (blue)
+    else if (lstSt[sid]==='p') cls = 'np';                      // pruned (red)
+    else if (aset.has(sid))    cls = 'nw';                      // waiting for next byte (light blue)
+
+    for (const d of dots) d.className = 'nd ' + cls;            // apply to all circles for this state
+  }
+}
+
+// ── Animation loop helpers ──
+function getMs() {
+  const s = +document.getElementById('cSp').value;
+  return Math.max(15, Math.round(900 * Math.pow(0.87, s-1))); // exponential speed curve
+}
+
+function getN() {
+  const s = +document.getElementById('cSp').value;
+  return s>=25 ? 6 : s>=20 ? 3 : s>=15 ? 2 : 1; // batch steps at high speed
+}
+
+function loop(ts) {
+  if (!running) return;
+  if (ts - lts >= getMs()) {       // throttle by configured interval
+    lts = ts;
+    const n = getN();
+    for (let i=0;i<n;i++) step(); // advance n bytes
+    render();                      // one DOM update per tick
+  }
+  raf = requestAnimationFrame(loop);
+}
+
+// ── Control handlers ──
+function togglePlay() {
+  running = !running;
+  document.getElementById('pBtn').textContent = running ? 'Pause' : 'Play';
+  if (running) { lts=0; raf=requestAnimationFrame(loop); }
+  else cancelAnimationFrame(raf);
+}
+
+function resetSim() {
+  cancelAnimationFrame(raf);
+  const inp = document.getElementById('cI').value;
+  const W   = +document.getElementById('cW').value;
+
+  // Reset all simulation state
+  wp   = new WP(W);
+  aset = new Set([0]);
+  tEv=0; tSk=0; tMt=0; pos=0; lstSt={}; rb=[]; cSig=new Set();
+
+  // Pick input generator
+  const gen = {http:gHTTP, dns:gDNS, json:gJSON, binary:gBin, mixed:gMix};
+  data = (gen[inp]||gHTTP)();
+
+  render();
+  if (running) { lts=0; raf=requestAnimationFrame(loop); }
+}
+
+// ── Initialise ──
+render();
+raf = requestAnimationFrame(loop);
+</script>
+</body>
+</html>
